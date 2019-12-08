@@ -36,7 +36,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 #   return filename
 #
 # filename = maybe_download('wikipedia2text-extracted.txt.bz2', 18377035)
-file = "/Users/houruixiang/python/tensorflow_nlp/Senior_Word2vec/dataset/text8.zip"
+file = "/Users/houruixiang/python/tensorflow_nlp_master/Senior_Word2vec/dataset/text8.zip"
 # nltk.download('punkt')
 vocabulary_size = 50000
 data_index = 0

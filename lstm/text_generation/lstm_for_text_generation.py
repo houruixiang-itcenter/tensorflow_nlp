@@ -412,7 +412,6 @@ def main():
 				average_loss += step_perplexity
 			print('(%d)' % di, end='')
 		print('')
-		
 		# 生成新的样本
 		if (step + 1) % valid_summary == 0:
 			average_loss = average_loss / (valid_summary * docs_per_step * step_per_document)

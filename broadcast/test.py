@@ -28,9 +28,9 @@ def main():
 
 
 	# Traceback (most recent call last):
-	#   File "/Users/houruixiang/python/tensorflow_nlp/broadcast/test.py", line 30, in <module>
+	#   File "/Users/houruixiang/python/tensorflow_nlp_master/broadcast/test.py", line 30, in <module>
 	#     main()
-	#   File "/Users/houruixiang/python/tensorflow_nlp/broadcast/test.py", line 26, in main
+	#   File "/Users/houruixiang/python/tensorflow_nlp_master/broadcast/test.py", line 26, in main
 	#     print(arr - mean2.reshape(1, 4))
 	# ValueError: operands could not be broadcast together with shapes (4,3) (1,4)
 	
@@ -39,8 +39,8 @@ def main():
 	# print(arr - a)
 	
 	# Traceback (most recent call last):
-	# File "/Users/houruixiang/python/tensorflow_nlp/broadcast/test.py", line 41, in <module>
-	# File "/Users/houruixiang/python/tensorflow_nlp/broadcast/test.py", line 37, in main
+	# File "/Users/houruixiang/python/tensorflow_nlp_master/broadcast/test.py", line 41, in <module>
+	# File "/Users/houruixiang/python/tensorflow_nlp_master/broadcast/test.py", line 37, in main
 	# print(arr - a)
 	# ValueError: operands could not be broadcast together with shapes (4,3) (2,1)
 	

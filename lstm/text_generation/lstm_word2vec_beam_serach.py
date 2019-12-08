@@ -21,6 +21,7 @@ from six.moves.urllib.request import urlretrieve
 import tensorflow as tf
 import csv
 import ssl
+# import lstm.text_generation.word2vec as word2vec
 
 '''
 引入集束搜索
@@ -120,7 +121,7 @@ def build_dataset(documents):
 
 
 # 定义样本生成器
-class DataGeneratorOHE(object):
+class DataGeneratorSeq(object):
 	
 	def __init__(self, text, batch_size, num_unroll):
 		# Text where a bigram is denoted by its ID
@@ -142,7 +143,7 @@ class DataGeneratorOHE(object):
 		Generates a single batch of data
 		'''
 		# Train inputs (one-hot-encoded) and train outputs (one-hot-encoded)
-		batch_data = np.zeros((self._batch_size, vocabulary_size), dtype=np.float32)
+		batch_data = np.zeros((self._batch_size), dtype=np.float32)
 		batch_labels = np.zeros((self._batch_size, vocabulary_size), dtype=np.float32)
 		
 		# Fill in the batch datapoint by datapoint
@@ -153,7 +154,7 @@ class DataGeneratorOHE(object):
 				self._cursor[b] = b * self._segments
 			
 			# Add the text at the cursor as the input
-			batch_data[b, self._text[self._cursor[b]]] = 1.0
+			batch_data[b] = self._text[self._cursor[b]]
 			# Add the preceding bigram as the label to be predicted
 			batch_labels[b, self._text[self._cursor[b] + 1]] = 1.0
 			# Update the cursor
@@ -253,7 +254,7 @@ def get_beam_prediction(session, beam_neighbors, sample_beam_inputs, best_neighb
 	feed_dict = {}
 	# 更新feed
 	for b_n_i in range(beam_neighbors):
-		feed_dict.update({sample_beam_inputs[b_n_i]: test_word})
+		feed_dict.update({sample_beam_inputs[b_n_i]: [test_word]})
 	
 	# todo 我们计算所有具有相同起始词/字符的邻居的样本预测
 	# 这对于更新beam search的所有实例的状态很重要  处理根结点
@@ -267,7 +268,7 @@ def get_beam_prediction(session, beam_neighbors, sample_beam_inputs, best_neighb
 	this_level_candidates = (np.argsort(sample_preds_root, axis=1).ravel()[::-1])[:beam_neighbors].tolist()
 	# todo 获取最优序列id对应的softmax概率 5个
 	this_level_prods = sample_preds_root[0, this_level_candidates]
-	test_sequences = ['' for _ in range(beam_neighbors)] # 存储最终的输出
+	test_sequences = ['' for _ in range(beam_neighbors)]  # 存储最终的输出
 	for b_n_i in range(beam_neighbors):
 		# todo 拿到最优概率对应的元素  (2单词的序列)  输出第二层的候选集合
 		test_sequences[b_n_i] += reverse_dictionary[this_level_candidates[b_n_i]]
@@ -282,8 +283,9 @@ def get_beam_prediction(session, beam_neighbors, sample_beam_inputs, best_neighb
 		# todo 遍历最优序列的id
 		for p_idx, pred_i in enumerate(this_level_candidates):
 			# 更新下一个预测feed_dict
-			test_words.append(np.zeros((1, vocabulary_size), dtype=np.float32))
-			test_words[p_idx][0, this_level_candidates[p_idx]] = 1.0
+			# test_words.append(np.zeros((1, vocabulary_size), dtype=np.float32))
+			# test_words[p_idx][0, this_level_candidates[p_idx]] = 1.0
+			test_words.append(this_level_candidates[p_idx])
 			# 更新输入
 			feed_dict.update({sample_beam_inputs[p_idx]: test_words[p_idx]})
 		
@@ -320,19 +322,20 @@ def get_beam_prediction(session, beam_neighbors, sample_beam_inputs, best_neighb
 			
 			test_sequences[b_n_i] += reverse_dictionary[this_level_candidates[b_n_i]]  # 父+子
 			
-			pred_words.append(np.zeros((1, vocabulary_size), dtype=np.float32))
-			pred_words[b_n_i][0, this_level_candidates[b_n_i]] = 1.0
+			# pred_words.append(np.zeros((1, vocabulary_size), dtype=np.float32))
+			# pred_words[b_n_i][0, this_level_candidates[b_n_i]] = 1.0
+			pred_words.append(this_level_candidates[b_n_i])
 	
-	rand_cand_ids = np.argsort(this_level_prods)[-3:]   # 每一条集束的联合概率排序之后的id
-	rand_cand_prods = this_level_prods[rand_cand_ids] / np.sum(this_level_prods[rand_cand_ids])  # 做一个归一操作?
-	random_id = np.random.choice(rand_cand_ids, p=rand_cand_prods)
+	# rand_cand_ids = np.argsort(this_level_prods)[-3:]  # 每一条集束的联合概率排序之后的id
+	# rand_cand_prods = this_level_prods[rand_cand_ids] / np.sum(this_level_prods[rand_cand_ids])  # 做一个归一操作?
+	# random_id = np.random.choice(rand_cand_ids, p=rand_cand_prods)
 	
-	best_beam_id = parent_beam_indices[random_id]
+	best_beam_id = parent_beam_indices[np.asscalar(np.argmax(this_level_prods))]
 	
 	session.run(update_sample_beam_state,
 	            feed_dict={best_neighbor_beam_indices: [best_beam_id for _ in range(beam_neighbors)]})
 	
-	test_word = pred_words[best_beam_id] # 重新赋值test_word
+	test_word = pred_words[best_beam_id]  # 重新赋值test_word
 	
 	return test_sequences[best_beam_id]
 
@@ -358,6 +361,18 @@ def main():
 	data_list, count, dictionary, reverse_dictionary = build_dataset(documents)
 	vocabulary_size = len(dictionary)
 	
+	# 加载word2vec
+	embedding_size = 128
+	# word2vec.define_data_and_hyperparameters(
+	# 	num_files, data_list, reverse_dictionary, embedding_size, vocabulary_size)
+	# # word2vec.print_some_batches()
+	# word2vec.define_word2vec_tensorflow()
+	#
+	# # We save the resulting embeddings as embeddings-tmp.npy
+	# # If you want to use this embedding for the following steps
+	# # please change the name to embeddings.npy and replace the existing
+	# word2vec.run_word2vec()
+	
 	# 定义超参数
 	num_nodes = 128
 	
@@ -377,32 +392,50 @@ def main():
 	train_inputs, train_labels = [], []
 	for ui in range(num_unrollings):
 		train_inputs.append(
-			tf.placeholder(tf.float32, shape=[batch_size, vocabulary_size], name='train_inputs_%d' % ui))
+			tf.placeholder(tf.int32, shape=[batch_size], name='train_inputs_%d' % ui))
 		train_labels.append(
 			tf.placeholder(tf.float32, shape=[batch_size, vocabulary_size], name='train_labels_%d' % ui))
 	
-	valid_inputs = tf.placeholder(tf.float32, shape=[1, vocabulary_size], name='valid_inputs')
+	valid_inputs = tf.placeholder(tf.int32, shape=[1], name='valid_inputs')
 	valid_labels = tf.placeholder(tf.float32, shape=[1, vocabulary_size], name='valid_labels')
 	
-	test_input = tf.placeholder(tf.float32, shape=[1, vocabulary_size], name='test_input')
+	test_input = tf.placeholder(tf.int32, shape=[1], name='test_input')
+	
+	
+	# todo 加载word2voc嵌入词向量
+	embed_mat = np.load('embeddings.npy')
+	embed_init = tf.constant(embed_mat)
+	embeddings = tf.Variable(embed_init, name='embeddings')
+	embedding_size = embed_mat.shape[1]
+	
+	# 定义真正的输入
+	train_inputs_embeds = []
+	for ui in range(num_unrollings):
+		train_inputs_embeds.append(tf.nn.embedding_lookup(embeddings, train_inputs[ui]))
+	
+	# Defining embedding lookup for operations for all the validation data
+	valid_inputs_embeds = tf.nn.embedding_lookup(embeddings, valid_inputs)
+	
+	# Defining embedding lookup for operations for all the testing data
+	test_input_embeds = tf.nn.embedding_lookup(embeddings, test_input)
 	
 	# 输入门
-	ix = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], stddev=0.02))
+	ix = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
 	im = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
 	ib = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
 	
 	# 遗忘门
-	fx = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], stddev=0.02))
+	fx = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
 	fm = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
 	fb = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
 	
 	# 候选门
-	cx = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], stddev=0.02))
+	cx = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
 	cm = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
 	cb = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
 	
 	# 输出门
-	ox = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], stddev=0.02))
+	ox = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
 	om = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
 	ob = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
 	
@@ -423,7 +456,7 @@ def main():
 	outputs = list()
 	output = save_output
 	state = save_state
-	for i in train_inputs:
+	for i in train_inputs_embeds:
 		output, state = lstm_cell(i, output, state, ix, im, ib, cx, cm, cb, fx, fm, fb, ox, om, ob)
 		output = tf.nn.dropout(output, keep_prob=1.0 - dropout)
 		outputs.append(output)
@@ -435,7 +468,7 @@ def main():
 	train_perplexity_without_exp = tf.reduce_sum(
 		tf.concat(train_labels, 0) * -tf.log(tf.concat(train_prediction, 0) + 1e-10)) / (num_unrollings * batch_size)
 	
-	valid_output, valid_state = lstm_cell(valid_inputs, save_valid_output, save_valid_state, ix, im, ib, cx, cm, cb, fx,
+	valid_output, valid_state = lstm_cell(valid_inputs_embeds, save_valid_output, save_valid_state, ix, im, ib, cx, cm, cb, fx,
 	                                      fm, fb, ox, om, ob)
 	valid_logtis = tf.nn.xw_plus_b(valid_output, w, b)
 	
@@ -444,7 +477,7 @@ def main():
 	
 	valid_perplexity_without_exp = tf.reduce_sum(valid_labels * -tf.log(valid_prediction + 1e-10))
 	
-	test_output, test_state = lstm_cell(test_input, save_test_output, save_test_state, ix, im, ib, cx, cm, cb, fx,
+	test_output, test_state = lstm_cell(test_input_embeds, save_test_output, save_test_state, ix, im, ib, cx, cm, cb, fx,
 	                                    fm, fb, ox, om, ob)
 	test_logtis = tf.nn.xw_plus_b(test_output, w, b)
 	with tf.control_dependencies([save_test_state.assign(test_state), save_test_output.assign(test_output)]):
@@ -458,7 +491,7 @@ def main():
 	gstep = tf.Variable(0, trainable=False, name='global_step')
 	inc_gstep = tf.assign(gstep, gstep + 1)
 	
-	tf_learning_rate = tf.train.exponential_decay(0.01, gstep, decay_steps=1, decay_rate=0.5)
+	tf_learning_rate = tf.train.exponential_decay(0.001, gstep, decay_steps=1, decay_rate=0.5)
 	
 	optimizer = tf.train.AdamOptimizer(tf_learning_rate)
 	gradients, v = zip(*optimizer.compute_gradients(loss))
@@ -483,7 +516,11 @@ def main():
 	global beam_neighbors
 	global beam_length
 	# 定义候选步的占位数量,以便在每个时间步保存最佳候选项
-	sample_beam_inputs = [tf.placeholder(tf.float32, shape=[1, vocabulary_size]) for _ in range(beam_neighbors)]
+	sample_beam_inputs = [tf.placeholder(tf.int32, shape=[1]) for _ in range(beam_neighbors)]
+	sample_input = tf.placeholder(tf.int32, shape=[1])
+	
+	sample_beam_inputs_embeds = [tf.nn.embedding_lookup(embeddings, inp) for inp in sample_beam_inputs]
+	sample_input_embeds = tf.nn.embedding_lookup(embeddings, sample_input)
 	# todo 定义两个占位符来存放贪婪发现的全局最优集束和本地维护的最佳候选集束索引
 	best_beam_index = tf.placeholder(shape=None, dtype=tf.int32)
 	# todo 每一个深度的候选集合?
@@ -503,7 +540,7 @@ def main():
 	# 计算每一个候选项的state and output
 	sample_beam_outputs, sample_beam_states = [], []
 	for vi in range(beam_neighbors):
-		tmp_output, tmp_state = lstm_cell(sample_beam_inputs[vi], save_sample_beam_output[vi],
+		tmp_output, tmp_state = lstm_cell(sample_beam_inputs_embeds[vi], save_sample_beam_output[vi],
 		                                  save_sample_beam_state[vi], ix, im, ib, cx, cm, cb, fx, fm, fb, ox, om, ob)
 		sample_beam_outputs.append(tmp_output)
 		sample_beam_states.append(tmp_state)
@@ -564,13 +601,13 @@ def main():
 	for fi in range(num_files):
 		# Get all the bigrams if the document id is not in the validation document ids
 		if fi not in long_doc_ids:
-			data_gens.append(DataGeneratorOHE(data_list[fi], batch_size, num_unrollings))
+			data_gens.append(DataGeneratorSeq(data_list[fi], batch_size, num_unrollings))
 		# if the document is in the validation doc ids, only get up to the
 		# last steps_per_document bigrams and use the last steps_per_document bigrams as validation data
 		else:
-			data_gens.append(DataGeneratorOHE(data_list[fi][:-steps_per_document], batch_size, num_unrollings))
+			data_gens.append(DataGeneratorSeq(data_list[fi][:-steps_per_document], batch_size, num_unrollings))
 			# Defining the validation data generator
-			valid_gens.append(DataGeneratorOHE(data_list[fi][-steps_per_document:], 1, 1))
+			valid_gens.append(DataGeneratorSeq(data_list[fi][-steps_per_document:], 1, 1))
 	
 	feed_dict = {}
 	for step in range(num_steps):
@@ -585,7 +622,7 @@ def main():
 				# Populate the feed dict by using each of the data batches
 				# present in the unrolled data
 				for ui, (dat, lbl) in enumerate(zip(u_data, u_labels)):
-					feed_dict[train_inputs[ui]] = dat
+					feed_dict[train_inputs[ui]] = dat.reshape(-1).astype(np.int32)
 					feed_dict[train_labels[ui]] = lbl
 				
 				# Running the TensorFlow operations
@@ -664,11 +701,10 @@ def main():
 				print('======================== New text Segment ==========================')
 				global test_word
 				# first word randomly generated
-				test_word = np.zeros((1, vocabulary_size), dtype=np.float32)
 				# 随机选择一个文档进行生成
 				rand_doc = data_list[np.random.randint(0, num_files)]
-				test_word[0, rand_doc[np.random.randint(0, len(rand_doc))]] = 1.0
-				print("", reverse_dictionary[np.argmax(test_word[0])], end='')
+				test_word = rand_doc[np.random.randint(len(rand_doc))]
+				print("", reverse_dictionary[test_word], end=' ')
 				
 				for _ in range(chars_in_segment):
 					test_sequence = get_beam_prediction(session, beam_neighbors=beam_neighbors,

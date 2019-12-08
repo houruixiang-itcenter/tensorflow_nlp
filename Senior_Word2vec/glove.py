@@ -16,7 +16,7 @@ from scipy.sparse import lil_matrix
 from six.moves import range
 import csv
 
-file = "/Users/houruixiang/python/tensorflow_nlp/Senior_Word2vec/dataset/text8.zip"
+file = "/Users/houruixiang/python/tensorflow_nlp_master/Senior_Word2vec/dataset/text8.zip"
 # nltk.download('punkt')
 vocabulary_size = 50000
 data_index = 0

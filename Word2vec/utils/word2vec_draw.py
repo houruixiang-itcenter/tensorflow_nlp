@@ -26,7 +26,7 @@ from math import ceil
 import csv
 import Word2vec.skip_gram as skip
 
-file = "/Users/houruixiang/python/tensorflow_nlp/Word2vec/dataset/text8.zip"
+file = "/Users/houruixiang/python/tensorflow_nlp_master/Word2vec/dataset/text8.zip"
 
 
 def find_clustered_embeddings(embeddings, distance_threshold, sample_threshold):

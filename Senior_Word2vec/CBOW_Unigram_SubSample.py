@@ -17,7 +17,7 @@ from six.moves import range
 import csv
 import Word2vec.utils.word2vec_draw as draw
 
-file = "/Users/houruixiang/python/tensorflow_nlp/Word2vec/dataset/text8.zip"
+file = "/Users/houruixiang/python/tensorflow_nlp_master/Word2vec/dataset/text8.zip"
 # nltk.download('punkt')
 vocabulary_size = 50000
 data_index = 0

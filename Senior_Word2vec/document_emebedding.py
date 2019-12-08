@@ -26,7 +26,7 @@ import operator  # sorting items in dictionary by value
 # nltk.download() #tokenizers/punkt/PY3/english.pickle
 from math import ceil
 
-file = "/Users/houruixiang/python/tensorflow_nlp/Senior_Word2vec/dataset/bbc-fulltext.zip"
+file = "/Users/houruixiang/python/tensorflow_nlp_master/Senior_Word2vec/dataset/bbc-fulltext.zip"
 # nltk.download('punkt')
 vocabulary_size = 25000  # 词汇表中有25000个单词
 data_index = 0
