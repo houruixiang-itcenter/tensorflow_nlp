@@ -21,6 +21,8 @@ from six.moves.urllib.request import urlretrieve
 import tensorflow as tf
 import csv
 import ssl
+from tensorflow.contrib import rnn, seq2seq
+
 # import lstm.text_generation.word2vec as word2vec
 
 '''
@@ -376,9 +378,9 @@ def main():
 	# word2vec.run_word2vec()
 	
 	# 定义超参数
-	num_nodes = 128
+	num_nodes = [64, 48, 32]
 	
-	batch_size = 64
+	batch_size = 32
 	
 	num_unrollings = 50
 	
@@ -421,73 +423,121 @@ def main():
 	# Defining embedding lookup for operations for all the testing data
 	test_input_embeds = tf.nn.embedding_lookup(embeddings, test_input)
 	
-	# 输入门
-	ix = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
-	im = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
-	ib = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
-	
-	# 遗忘门
-	fx = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
-	fm = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
-	fb = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
-	
-	# 候选门
-	cx = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
-	cm = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
-	cb = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
-	
-	# 输出门
-	ox = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
-	om = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
-	ob = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
+	# todo 这里不再需要定义lstm的参数,因为我们这里使用tensorflow的API
+	# # 输入门
+	# ix = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
+	# im = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
+	# ib = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
+	#
+	# # 遗忘门
+	# fx = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
+	# fm = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
+	# fb = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
+	#
+	# # 候选门
+	# cx = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
+	# cm = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
+	# cb = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
+	#
+	# # 输出门
+	# ox = tf.Variable(tf.truncated_normal([embedding_size, num_nodes], stddev=0.02))
+	# om = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], stddev=0.02))
+	# ob = tf.Variable(tf.random_uniform([1, num_nodes], -0.02, 0.02))
 	
 	# softmax 参数
-	w = tf.Variable(tf.truncated_normal([num_nodes, vocabulary_size], stddev=0.02))
+	w = tf.Variable(tf.truncated_normal([num_nodes[-1], vocabulary_size], stddev=0.01))
 	b = tf.Variable(tf.random_uniform([vocabulary_size], -0.02, 0.02))
 	
-	# 隐藏状态 & 单元状态
-	save_output = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False, name='train_hidden')
-	save_state = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False, name='train_cell')
+	# # 隐藏状态 & 单元状态
+	# save_output = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False, name='train_hidden')
+	# save_state = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False, name='train_cell')
+	#
+	# save_valid_output = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='valid_hidden')
+	# save_valid_state = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='valid_cell')
+	#
+	# save_test_output = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='test_hidden')
+	# save_test_state = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='test_cell')
+	#
+	# outputs = list()
+	# output = save_output
+	# state = save_state
+	# for i in train_inputs_embeds:
+	# 	output, state = lstm_cell(i, output, state, ix, im, ib, cx, cm, cb, fx, fm, fb, ox, om, ob)
+	# 	output = tf.nn.dropout(output, keep_prob=1.0 - dropout)
+	# 	outputs.append(output)
+	# todo 定义lstm单元列表
+	cells = [tf.nn.rnn_cell.LSTMCell(n) for n in num_nodes]
+	# 将lstm单元定义DropoutWrapper函数
+	'''
+	cell:计算中使用的rnn类型
+	variational_recurrent:一种特殊的dropout类型
+	'''
+	dropout_cells = [
+		rnn.DropoutWrapper(
+			cell=lstm, input_keep_prob=1.0, output_keep_prob=1.0 - dropout, state_keep_prob=1.0,
+			variational_recurrent=True, input_size=tf.TensorShape([embedding_size]), dtype=tf.float32
+		) for lstm in cells
+	]
 	
-	save_valid_output = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='valid_hidden')
-	save_valid_state = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='valid_cell')
+	# todo 接着我们定义一个MultiRNNCell对象,用于封装LSTM单元列表
+	stacked_dropout_cell = tf.nn.rnn_cell.MultiRNNCell(dropout_cells)
+	stacked_cell = tf.nn.rnn_cell.MultiRNNCell(cells)
+	# todo 定义一个张量来进行lstm的迭代的更新状态(隐藏状态和单元状态)
+	initial_state = stacked_dropout_cell.zero_state(batch_size, dtype=tf.float32)
 	
-	save_test_output = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='test_hidden')
-	save_test_state = tf.Variable(tf.zeros([1, num_nodes]), trainable=False, name='test_cell')
+	# todo 接下来计算lstm单元的输出
+	'''
+	cell:用于计算输出的序列模型的类型
+	inputs:lstm的输入,[num_unrollings, batch_size, embeddings_size],这个shape中时间是0轴,所以这种数据被称为time_major
+	time_major:输入的是否为 time major
+	initial_state:需要一个起始状态作为起点
+	'''
+	train_outputs, initial_state = tf.nn.dynamic_rnn(
+		stacked_dropout_cell,tf.concat(train_inputs_embeds,axis=0),
+		initial_state=initial_state, time_major=True
+	)
 	
-	outputs = list()
-	output = save_output
-	state = save_state
-	for i in train_inputs_embeds:
-		output, state = lstm_cell(i, output, state, ix, im, ib, cx, cm, cb, fx, fm, fb, ox, om, ob)
-		output = tf.nn.dropout(output, keep_prob=1.0 - dropout)
-		outputs.append(output)
+	# todo logtis
+	final_output = tf.reshape(train_outputs,[-1,num_nodes[-1]])
 	
-	logtis = tf.matmul(tf.concat(axis=0, values=outputs), w) + b
+	
+	
+	logtis = tf.matmul(final_output, w) + b
 	train_prediction = tf.nn.softmax(logits=logtis)
+	
+	# todo 把logtis转化为time major形式,我们用这种形式来计算损失函数
+	time_major_train_logits = tf.reshape(logtis,[num_unrollings,batch_size,-1])
+	time_major_train_labels = tf.reshape(tf.concat(train_labels,axis=0),[num_unrollings,batch_size,vocabulary_size])
 	
 	# 计算困惑度
 	train_perplexity_without_exp = tf.reduce_sum(
 		tf.concat(train_labels, 0) * -tf.log(tf.concat(train_prediction, 0) + 1e-10)) / (num_unrollings * batch_size)
 	
-	valid_output, valid_state = lstm_cell(valid_inputs_embeds, save_valid_output, save_valid_state, ix, im, ib, cx, cm, cb, fx,
-	                                      fm, fb, ox, om, ob)
-	valid_logtis = tf.nn.xw_plus_b(valid_output, w, b)
+	'''-------------------------------------------------验证集不使用droupout-------------------------------------------------'''
+	initial_valid_state = stacked_cell.zero_state(1, dtype=tf.float32)
 	
-	with tf.control_dependencies([save_valid_state.assign(valid_state), save_valid_output.assign(valid_output)]):
-		valid_prediction = tf.nn.softmax(logits=valid_logtis)
+	# Validation input related LSTM computation
+	valid_outputs, initial_valid_state = tf.nn.dynamic_rnn(
+		stacked_cell, tf.expand_dims(valid_inputs_embeds, 0),
+		time_major=True, initial_state=initial_valid_state
+	)
+	
+	final_vaild_output = tf.reshape(valid_outputs, [-1, num_nodes[-1]])
+	valid_logtis = tf.nn.xw_plus_b(final_vaild_output, w, b)
+	valid_prediction = tf.nn.softmax(logits=valid_logtis)
 	
 	valid_perplexity_without_exp = tf.reduce_sum(valid_labels * -tf.log(valid_prediction + 1e-10))
 	
-	test_output, test_state = lstm_cell(test_input_embeds, save_test_output, save_test_state, ix, im, ib, cx, cm, cb, fx,
-	                                    fm, fb, ox, om, ob)
-	test_logtis = tf.nn.xw_plus_b(test_output, w, b)
-	with tf.control_dependencies([save_test_state.assign(test_state), save_test_output.assign(test_output)]):
-		test_predition = tf.nn.softmax(logits=test_logtis)
+	# todo 计算loss
+	loss = seq2seq.sequence_loss(logtis=tf.transpose(time_major_train_logits, [1, 0, 2]),
+	                             targets=tf.transpose(time_major_train_labels),
+	                             weights=tf.ones([batch_size, num_unrollings], dtype=tf.float32),
+	                             average_across_timesteps=False, average_across_batch=True)
 	
-	with tf.control_dependencies([save_output.assign(output), save_state.assign(state)]):
-		loss = tf.reduce_mean(
-			tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.concat(axis=0, values=train_labels), logits=logtis))
+	
+	loss = tf.reduce_sum(loss)
+	
+
 	
 	# learning rate decay
 	gstep = tf.Variable(0, trainable=False, name='global_step')
@@ -501,18 +551,7 @@ def main():
 	gradients, _ = tf.clip_by_global_norm(gradients, 5.0)
 	optimizer = optimizer.apply_gradients(zip(gradients, v))
 	
-	# Reset train state
-	reset_train_state = tf.group(tf.assign(save_state, tf.zeros([batch_size, num_nodes])),
-	                             tf.assign(save_output, tf.zeros([batch_size, num_nodes])))
 	
-	# Reset valid state
-	reset_valid_state = tf.group(tf.assign(save_valid_state, tf.zeros([1, num_nodes])),
-	                             tf.assign(save_valid_output, tf.zeros([1, num_nodes])))
-	
-	# Reset test state
-	reset_test_state = tf.group(
-		save_test_output.assign(tf.random_normal([1, num_nodes], stddev=0.05)),
-		save_test_state.assign(tf.random_normal([1, num_nodes], stddev=0.05)))
 	
 	'''-----------------------------------------------beam_search----------------------------------------------------'''
 	global beam_neighbors
@@ -541,18 +580,20 @@ def main():
 	
 	# 计算每一个候选项的state and output
 	sample_beam_outputs, sample_beam_states = [], []
+	tmp_state_tuple = []
 	for vi in range(beam_neighbors):
-		tmp_output, tmp_state = lstm_cell(sample_beam_inputs_embeds[vi], save_sample_beam_output[vi],
-		                                  save_sample_beam_state[vi], ix, im, ib, cx, cm, cb, fx, fm, fb, ox, om, ob)
-		sample_beam_outputs.append(tmp_output)
-		sample_beam_states.append(tmp_state)
-	# 1.将上一个time的h and o,以便下次使用
-	# 2.计算每一个预测的概率
+		single_beam_state_tuple = []
+		for ni in range(len(num_nodes)):
+			single_beam_state_tuple.append(tf.nn.rnn_cell.LSTMStateTuple(save_sample_beam_output[ni][vi],save_sample_beam_state[ni][vi]))
+		tmp_state_tuple.append(single_beam_state_tuple)
+		
 	for vi in range(beam_neighbors):
-		# todo 第一步赋值记忆历史状态  第二步计算概率
-		with tf.control_dependencies([save_sample_beam_output[vi].assign(sample_beam_outputs[vi]),
-		                              save_sample_beam_state[vi].assign(sample_beam_states[vi])]):
-			sample_beam_predictions.append(tf.nn.softmax(tf.nn.xw_plus_b(sample_beam_outputs[vi], w, b)))
+		sample_beam_outputs.append([])
+		sample_beam_states.append([])
+		for ni in range(num_nodes):
+			sample_beam_outputs[-1].append(tmp_state_tuple[vi][ni][0])
+			sample_beam_states[-1].append(tmp_state_tuple[vi][ni][1])
+	
 	
 	stacked_beam_outputs = tf.stack(save_sample_beam_output)  # todo  纵向拼接
 	stacked_beam_states = tf.stack(save_sample_beam_state)
@@ -564,11 +605,18 @@ def main():
 	# Since both the candidates from level 2 comes from the parent b
 	# We need to update both states/outputs from saved_sample_beam_state/output to have index 1 (corresponding to parent b)
 	# todo 赋值上一时刻的  h 和 o; group仅仅是并行的操作集合,返回值无意义
-	update_sample_beam_state = tf.group(
-		*[save_sample_beam_output[vi].assign(tf.gather_nd(stacked_beam_outputs, [best_neighbor_beam_indices[vi]])) for
-		  vi in range(beam_neighbors)],
-		*[save_sample_beam_state[vi].assign(tf.gather_nd(stacked_beam_states, [best_neighbor_beam_indices[vi]])) for vi
-		  in range(beam_neighbors)])
+	beam_update_ops = tf.group(
+		[[save_sample_beam_output[ni][vi].assign(tf.gather_nd(sample_beam_outputs[vi][ni])) for
+		  vi in range(beam_neighbors)]for ni in range(len(num_nodes))],
+		[[save_sample_beam_state[ni][vi].assign(tf.gather_nd(sample_beam_states[vi][ni])) for vi
+		  in range(beam_neighbors)]for ni in range(len(num_nodes))])
+	
+	# 1.将上一个time的h and o,以便下次使用
+	# 2.计算每一个预测的概率
+	for vi in range(beam_neighbors):
+		# todo 第一步赋值记忆历史状态  第二步计算概率
+		with tf.control_dependencies([beam_update_ops]):
+			sample_beam_predictions.append(tf.nn.softmax(tf.nn.xw_plus_b(sample_beam_outputs[vi][-1], w, b)))
 	
 	filename_to_save = 'lstm_beam_search_dropout'
 	
